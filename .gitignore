@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.py[cod]
+.idea/
+.env
+config/postgres_config.py
+config/oracle_config.py
+logs/*
+!logs/.gitkeep
+reports/
