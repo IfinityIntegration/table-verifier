@@ -1,4 +1,5 @@
 import logging
+from time import perf_counter
 from uuid import uuid4
 from comparator.metadata import Column, identifier
 from utils.errors import ConfigurationError, DatabaseError
@@ -34,6 +35,18 @@ class BaseClient:
                 LOG.debug('%s connection closed', self.side)
             except Exception:
                 raise DatabaseError(f'{self.side} connection could not be closed') from None
+
+    def begin_table(self):
+        """Reuse the session, never the previous table's transaction."""
+        connection = self.connect()
+        try:
+            connection.rollback()
+            if self.side == 'Oracle':
+                with connection.cursor() as cursor:
+                    cursor.execute('SET TRANSACTION READ ONLY')
+        except Exception:
+            self.close()
+            raise DatabaseError(f'{self.side} transaction reset failed') from None
 
     def __enter__(self):
         self.connect()
@@ -97,10 +110,21 @@ class BaseClient:
             cursor_args = {'name': 'compare_' + uuid4().hex} if self.side == 'PostgreSQL' else {}
             with connection.cursor(**cursor_args) as cursor:
                 cursor.arraysize = batch_size
+                LOG.info('%s table=%s executing ordered SELECT', self.side, table)
+                print(f'  {self.side}: starting read of {table}', flush=True)
+                started = perf_counter()
                 cursor.execute(sql)
+                LOG.info('%s SELECT ready in %.3fs', self.side, perf_counter() - started)
                 processed = 0
-                while rows := cursor.fetchmany(batch_size):
+                while True:
+                    LOG.info('%s fetching next batch size=%d total_fetched=%d', self.side, batch_size, processed)
+                    started = perf_counter()
+                    rows = cursor.fetchmany(batch_size)
+                    LOG.info('%s batch received rows=%d duration=%.3fs', self.side, len(rows), perf_counter() - started)
+                    if not rows:
+                        break
                     processed += len(rows)
+                    print(f'  {self.side}: {processed:,} rows fetched', flush=True)
                     LOG.debug('%s batch fetched=%d total_fetched=%d', self.side, len(rows), processed)
                     yield rows
         except DatabaseError:

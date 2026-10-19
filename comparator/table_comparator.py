@@ -1,6 +1,6 @@
 """Linear merge of sorted unique-key streams; no accumulation of results."""
 from comparator.models import Statistics, Status
-from comparator.value_normalizer import materialize, normalize, report_value
+from comparator.value_normalizer import materialize, normalize, report_value, values_equal
 from utils.errors import ConfigurationError
 
 
@@ -52,7 +52,7 @@ def compare_streams(postgres_batches, oracle_batches, columns, key_count, emit=l
             stats.oracle_total += 1
             differences = [{'column': columns[i], 'postgres_value': report_value(a), 'oracle_value': report_value(b)}
                            for i, (a, b) in enumerate(zip(left[1], right[1]))
-                           if normalize(a, key=i < key_count) != normalize(b, key=i < key_count)]
+                           if not values_equal(a, b, key=i < key_count)]
             status = Status.VALUE_MISMATCH if differences else Status.MATCHED
             if differences:
                 stats.value_mismatches += 1

@@ -24,8 +24,11 @@ class ComparisonConfig:
     columns: tuple[str, ...] = ()
     ignore_columns: tuple[str, ...] = ()
     batch_size: int = 10000
+    large_value_batch_size: int = 100
 
     def __post_init__(self):
+        from comparator.batching import validate_large_batch
+        validate_large_batch(self.large_value_batch_size)
         identifier(self.postgres_table)
         identifier(self.oracle_table)
         for field in ('keys', 'columns', 'ignore_columns'):

@@ -10,7 +10,7 @@ class ComparisonTests(unittest.TestCase):
     def test_all_statuses_and_multiple_columns(self):
         events = []
         result = compare_streams([[(1, 'a', 1)], [(2, 'b', 2), (4, 'd', 4)]],
-                                 [[(1, 'a ', Decimal('1.0')), (2, 'B', 3)], [(3, 'c', 3)]],
+                                 [[(1, 'a', Decimal('1.0')), (2, 'B', 3)], [(3, 'c', 3)]],
                                  ['id', 'name', 'value'], 1, events.append)
         self.assertEqual((result.postgres_total, result.oracle_total), (3, 3))
         self.assertEqual((result.matched, result.value_mismatches, result.missing_in_postgres, result.missing_in_oracle), (1, 1, 1, 1))
@@ -63,7 +63,7 @@ class ComparisonTests(unittest.TestCase):
     def test_lob(self):
         class Lob:
             def read(self):
-                return 'hello '
+                return 'hello'
         self.assertEqual(compare_streams([[(1, 'hello')]], [[(1, Lob())]], ['id', 'text'], 1).matched, 1)
 
 

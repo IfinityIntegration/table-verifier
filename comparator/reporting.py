@@ -1,5 +1,6 @@
 """Incremental difference reports and safe, per-execution audit summaries."""
 import json
+import csv
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
@@ -11,13 +12,22 @@ from comparator.table_comparator import compare_streams
 
 
 class ReportRun:
-    def __init__(self, output='logs'):
+    def __init__(self, output='logs', csv_output=None):
         self.started = perf_counter()
         self.start_time = datetime.now(timezone.utc)
         self.execution_id = self.start_time.strftime('%Y_%m_%d_%H%M%S') + '_' + uuid4().hex[:12]
         directory = Path(output)
         directory.mkdir(parents=True, exist_ok=True)
         self.path = directory / f'comparison_{self.execution_id}.log'
+        self.csv_path = None
+        self.csv_stream = None
+        if csv_output is not None:
+            csv_directory = Path(csv_output)
+            csv_directory.mkdir(parents=True, exist_ok=True)
+            self.csv_path = csv_directory / f'comparison_{self.execution_id}.csv'
+            self.csv_stream = self.csv_path.with_suffix('.csv.partial').open('x', encoding='utf-8-sig', newline='')
+            self.csv_writer = csv.writer(self.csv_stream)
+            self.csv_writer.writerow(['status', 'primary_key', 'column', 'postgres_value', 'oracle_value'])
         self.stats = Statistics()
         self.metadata = {'postgres_table': None, 'oracle_table': None, 'comparison_mode': 'stream'}
         self.handler = logging.FileHandler(self.path, mode='x', encoding='utf-8')
@@ -51,15 +61,29 @@ class ReportRun:
                  'MISSING_IN_POSTGRES': 'missing_in_postgres', 'MISSING_IN_ORACLE': 'missing_in_oracle'}[status]
         setattr(self.stats, field, getattr(self.stats, field) + 1)
         if status != 'MATCHED':
-            self.logger.info('DIFFERENCE %s', self.cell(event))
+            if self.csv_stream is None:
+                self.logger.info('DIFFERENCE %s', self.cell(event))
+            if self.csv_stream is not None:
+                key = self.cell(event['primary_key'])
+                if status == 'VALUE_MISMATCH':
+                    for diff in event['differences']:
+                        self.csv_writer.writerow([status, key, diff['column'], self.cell(diff['postgres_value']), self.cell(diff['oracle_value'])])
+                else:
+                    self.csv_writer.writerow([status, key, '', 'Row exists' if status == 'MISSING_IN_ORACLE' else '', 'Row exists' if status == 'MISSING_IN_POSTGRES' else ''])
         if self.events % 10000 == 0 or perf_counter() - self.last_progress >= 10:
             self.handler.flush()
+            if self.csv_stream is not None:
+                self.csv_stream.flush()
             self.logger.info('execution_id=%s progress rows_processed=%s', self.execution_id, asdict(self.stats))
             self.last_progress = perf_counter()
 
     def finish(self, error=None):
         if self.finished:
             return
+        if self.csv_stream is not None:
+            self.csv_stream.close()
+            if error is None:
+                self.csv_path.with_suffix('.csv.partial').rename(self.csv_path)
         end = datetime.now(timezone.utc)
         duration = perf_counter() - self.started
         status = 'failed' if error else 'complete'
@@ -80,6 +104,8 @@ class ReportRun:
             print(f'{name.replace("_", " ").capitalize()}: {count:,}')
         print(f'Duration: {duration:.3f} seconds')
         print(f'Log: {self.path.resolve()}')
+        if self.csv_path is not None:
+            print(f'CSV: {(self.csv_path if error is None else self.csv_path.with_suffix(".csv.partial")).resolve()}')
 
 
 

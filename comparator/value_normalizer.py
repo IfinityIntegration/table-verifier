@@ -40,3 +40,17 @@ def report_value(value):
     if value is None or isinstance(value, (str, int, float, bool)):
         return value
     raise ConfigurationError(f'Unsupported report value type: {type(value).__name__}')
+
+
+def values_equal(left, right, *, key=False):
+    """Text/BLOB equivalence requires exact UTF-8 bytes; no lossy decoding."""
+    if not key:
+        binary = (bytes, bytearray, memoryview)
+        if isinstance(left, str) and isinstance(right, binary):
+            return left.encode('utf-8') == bytes(right)
+        if isinstance(right, str) and isinstance(left, binary):
+            return right.encode('utf-8') == bytes(left)
+        # Full-row checking preserves whitespace differences in textual values.
+        if isinstance(left, str) and isinstance(right, str):
+            return left == right
+    return normalize(left, key=key) == normalize(right, key=key)
