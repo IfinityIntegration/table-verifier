@@ -48,6 +48,11 @@ def report_value(value):
 def values_equal(left, right, *, key=False):
     """Text/BLOB equivalence requires exact UTF-8 bytes; no lossy decoding."""
     if not key:
+        # Some Oracle flag columns expose booleans as character digits.
+        if isinstance(left, bool) and isinstance(right, str) and right in ('0', '1'):
+            return int(left) == int(right)
+        if isinstance(right, bool) and isinstance(left, str) and left in ('0', '1'):
+            return int(right) == int(left)
         # Oracle stores empty character strings as NULL.
         if (left is None and isinstance(right, str) and right == '') or (
                 right is None and isinstance(left, str) and left == ''):

@@ -84,3 +84,6 @@ Empty text strings and NULL compare as equal for data values, matching Oracle's
 empty-string storage behavior. Whitespace-only strings and empty binary values
 remain distinct from NULL. Comparison keys retain their exact semantics.
 
+Boolean data values also match character flags: false equals "0" and true equals
+"1" in either database direction. Other text and comparison keys remain exact.
+

@@ -7,6 +7,18 @@ from utils.errors import ConfigurationError
 
 
 class ComparisonTests(unittest.TestCase):
+    def test_boolean_character_flags(self):
+        from comparator.value_normalizer import values_equal
+        for flag, text in ((False, '0'), (True, '1')):
+            self.assertTrue(values_equal(flag, text))
+            self.assertTrue(values_equal(text, flag))
+            self.assertFalse(values_equal(flag, text, key=True))
+        for flag, text in ((False, '1'), (True, '0'), (False, ''), (False, ' 0')):
+            self.assertFalse(values_equal(flag, text))
+        result = compare_streams([[(1, False)]], [[(1, '0')]], ['id', 'um_shared_role'], 1)
+        self.assertEqual(result.matched, 1)
+        self.assertEqual(result.value_mismatches, 0)
+
     def test_empty_string_equals_null_only_for_values(self):
         from comparator.value_normalizer import values_equal
         self.assertTrue(values_equal('', None))
