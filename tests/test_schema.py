@@ -39,7 +39,9 @@ class SchemaRunnerTests(unittest.TestCase):
             self.assertIn('NOT_COMPARED', logs)
             self.assertIn('COMPLETE', logs)
             self.assertIn('completed_table_totals', logs)
-            self.assertFalse((Path(directory)/'reports').exists())
+            reports = list((Path(directory)/'reports').glob('schema_issues_*.csv'))
+            self.assertEqual(len(reports), 1)
+            self.assertIn('NOT_COMPARED', reports[0].read_text(encoding='utf-8-sig'))
 
 class ParallelTests(unittest.TestCase):
     def test_worker_connections_reused_and_reports_isolated(self):

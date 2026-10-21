@@ -7,6 +7,26 @@ from utils.errors import ConfigurationError
 
 
 class ComparisonTests(unittest.TestCase):
+    def test_empty_string_equals_null_only_for_values(self):
+        from comparator.value_normalizer import values_equal
+        self.assertTrue(values_equal('', None))
+        self.assertTrue(values_equal(None, ''))
+        self.assertFalse(values_equal('', None, key=True))
+        self.assertFalse(values_equal(None, '', key=True))
+        self.assertFalse(values_equal(' ', None))
+        self.assertFalse(values_equal(b'', None))
+        result = compare_streams([[(1, '')]], [[(1, None)]], ['id', 'value'], 1)
+        self.assertEqual(result.matched, 1)
+        self.assertEqual(result.value_mismatches, 0)
+
+    def test_datetime_fractional_seconds_ignored_only_for_values(self):
+        from comparator.value_normalizer import values_equal
+        whole = datetime(2026, 1, 1, 12, 30, 10)
+        fraction = whole.replace(microsecond=987654)
+        self.assertTrue(values_equal(whole, fraction))
+        self.assertFalse(values_equal(whole, fraction, key=True))
+        self.assertFalse(values_equal(whole, whole.replace(second=11)))
+
     def test_all_statuses_and_multiple_columns(self):
         events = []
         result = compare_streams([[(1, 'a', 1)], [(2, 'b', 2), (4, 'd', 4)]],

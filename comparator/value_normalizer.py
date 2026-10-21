@@ -18,6 +18,9 @@ def normalize(value, *, key=False):
             raise ConfigurationError('Non-finite numeric values are not supported')
         return ('number', number)
     if isinstance(value, datetime):
+        # Compare data values at whole-second precision; identities stay exact.
+        if not key:
+            value = value.replace(microsecond=0)
         if value.utcoffset() is not None:
             return ('aware_datetime', value.astimezone(timezone.utc))
         return ('datetime', value)
@@ -45,6 +48,10 @@ def report_value(value):
 def values_equal(left, right, *, key=False):
     """Text/BLOB equivalence requires exact UTF-8 bytes; no lossy decoding."""
     if not key:
+        # Oracle stores empty character strings as NULL.
+        if (left is None and isinstance(right, str) and right == '') or (
+                right is None and isinstance(left, str) and left == ''):
+            return True
         binary = (bytes, bytearray, memoryview)
         if isinstance(left, str) and isinstance(right, binary):
             return left.encode('utf-8') == bytes(right)

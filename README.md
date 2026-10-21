@@ -66,3 +66,21 @@ These commands each perform a full comparison. Larger batches are not always
 faster. The default 500 is a starting point, not a measured optimum. Connection
 reuse and concurrency preserve the existing value comparison rules; snapshots
 are per table, not coordinated across both databases or the whole schema.
+# Schema issue reports
+
+Each schema run writes `reports/schema_issues_<execution_id>.csv` with all value
+mismatches, missing rows, missing tables, and table validation/execution failures.
+Table failures do not stop the remaining tables. A failed table's comparison may
+be incomplete; its failure is included in the CSV. An empty CSV (header only)
+means no issues were found if the run completed successfully. Logs retain run
+summaries and diagnostics. Driver failures include their exception type rather
+than potentially sensitive connection text.
+
+Datetime data values compare at whole-second precision: fractional seconds are
+ignored, while different seconds and timezone awareness still matter. Datetime
+comparison keys retain full precision so distinct identities are not collapsed.
+
+Empty text strings and NULL compare as equal for data values, matching Oracle's
+empty-string storage behavior. Whitespace-only strings and empty binary values
+remain distinct from NULL. Comparison keys retain their exact semantics.
+

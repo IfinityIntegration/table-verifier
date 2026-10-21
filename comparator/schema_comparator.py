@@ -1,5 +1,7 @@
 """Bounded concurrent schema orchestration around the existing streaming comparator."""
 import logging
+import csv
+import json
 import threading
 from queue import Queue, Empty
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -21,6 +23,18 @@ def compare_schema(root, pg_config, ora_config, batch_size=10000, metadata_only=
     # Validate batch size before connecting, even for an empty schema.
     ComparisonConfig('validation', 'validation', ['id'], batch_size=batch_size)
     master = ReportRun(root / 'logs')
+    report_directory = root / 'reports'
+    report_directory.mkdir(exist_ok=True)
+    issues_path = report_directory / f'schema_issues_{master.execution_id}.csv'
+    issues_stream = issues_path.open('x', encoding='utf-8-sig', newline='')
+    issues_writer = csv.writer(issues_stream)
+    issues_writer.writerow(['postgres_table', 'oracle_table', 'status', 'primary_key', 'column', 'postgres_value', 'oracle_value', 'reason'])
+    issues_lock = threading.Lock()
+
+    def write_issue(pg_table='', ora_table='', status='', key='', column='', pg_value='', ora_value='', reason=''):
+        with issues_lock:
+            issues_writer.writerow([pg_table, ora_table, status, key, column, pg_value, ora_value, reason])
+            issues_stream.flush()
     logger = logging.getLogger()
     old_handlers, old_level = logger.handlers[:], logger.level
     logger.handlers = [master.handler]
@@ -37,8 +51,10 @@ def compare_schema(root, pg_config, ora_config, batch_size=10000, metadata_only=
             pairs, pg_only, ora_only = match_tables(list_tables(pg), list_tables(ora))
         for name in pg_only:
             results.append({'table': name, 'status': 'MISSING_TABLE_IN_ORACLE'})
+            write_issue(pg_table=name, status='MISSING_TABLE_IN_ORACLE')
         for name in ora_only:
             results.append({'table': name, 'status': 'MISSING_TABLE_IN_POSTGRES'})
+            write_issue(ora_table=name, status='MISSING_TABLE_IN_POSTGRES')
         for result in results:
             logging.warning('%s', result)
             print(result['status'] + ': ' + result['table'])
@@ -87,11 +103,21 @@ def compare_schema(root, pg_config, ora_config, batch_size=10000, metadata_only=
                 print(f'  Fetch batch: {effective_batch:,}; large-value columns: {large_columns}', flush=True)
                 report.configure(comparison_key=keys, columns=list(plan.postgres_select))
                 if plan.postgres_only or plan.oracle_only:
-                    raise ConfigurationError('Column sets differ; full-row schema comparison requires matching columns')
+                    raise ConfigurationError(f'Column sets differ: PostgreSQL-only={list(plan.postgres_only)}; Oracle-only={list(plan.oracle_only)}')
                 if not metadata_only:
                     n = len(keys)
                     with closing(pg.fetch_batches(pg_table, plan.postgres_select, effective_batch, plan.postgres_select[:n])) as left, closing(ora.fetch_batches(ora_table, plan.oracle_select, effective_batch, plan.oracle_select[:n])) as right:
-                        run_comparison(cancellable(left, stop), cancellable(right, stop), plan.postgres_select, n, report)
+                        class IssueReport:
+                            def emit(self, event):
+                                report.emit(event)
+                                if event['status'] == 'MATCHED':
+                                    return
+                                key = json.dumps(event['primary_key'], ensure_ascii=True)
+                                for diff in event.get('differences') or [{}]:
+                                    write_issue(pg_table, ora_table, event['status'], key, diff.get('column', ''),
+                                                json.dumps(diff.get('postgres_value'), ensure_ascii=True),
+                                                json.dumps(diff.get('oracle_value'), ensure_ascii=True))
+                        run_comparison(cancellable(left, stop), cancellable(right, stop), plan.postgres_select, n, IssueReport())
                 outcome['status'] = 'METADATA_VALIDATED' if metadata_only else 'COMPLETE'
                 report.finish()
                 with result_lock:
@@ -105,6 +131,7 @@ def compare_schema(root, pg_config, ora_config, batch_size=10000, metadata_only=
                         pass
                 outcome['status'] = 'NOT_COMPARED' if isinstance(error, ConfigurationError) and report.events == 0 else 'FAILED'
                 outcome['reason'] = str(error) if isinstance(error, ConfigurationError) else type(error).__name__
+                write_issue(pg_table, ora_table, outcome['status'], reason=outcome['reason'])
                 print(f"{outcome['status']}: {outcome['reason']}", flush=True)
                 report.logger.error('%s', outcome['reason'])
                 report.finish(error)
@@ -132,6 +159,7 @@ def compare_schema(root, pg_config, ora_config, batch_size=10000, metadata_only=
         master.finish(ConfigurationError('Schema coverage incomplete; see table_results') if incomplete else None)
         return 1 if incomplete else 0
     except (Exception, KeyboardInterrupt) as error:
+        write_issue(status='SCHEMA_FAILED', reason=str(error) if isinstance(error, ConfigurationError) else type(error).__name__)
         logging.error('Schema run failed: %s', str(error) if isinstance(error, ConfigurationError) else type(error).__name__)
         for name, value in completed_stats.items():
             setattr(master.stats, name, value)
@@ -139,6 +167,8 @@ def compare_schema(root, pg_config, ora_config, batch_size=10000, metadata_only=
         master.finish(error)
         return 1
     finally:
+        issues_stream.close()
+        print(f'Schema issues report: {issues_path.resolve()}')
         logger.handlers = old_handlers
         logger.setLevel(old_level)
         master.handler.close()
