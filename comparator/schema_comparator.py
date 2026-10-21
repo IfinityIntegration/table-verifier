@@ -2,6 +2,7 @@
 import logging
 import csv
 import json
+import re
 import threading
 from queue import Queue, Empty
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -25,7 +26,8 @@ def compare_schema(root, pg_config, ora_config, batch_size=10000, metadata_only=
     master = ReportRun(root / 'logs')
     report_directory = root / 'reports'
     report_directory.mkdir(exist_ok=True)
-    issues_path = report_directory / f'schema_issues_{master.execution_id}.csv'
+    database_name = re.sub(r'[^A-Za-z0-9_-]+', '_', str(pg_config.get('database', 'database'))).strip('_')[:100] or 'database'
+    issues_path = report_directory / f'schema_issues_{database_name}_{master.execution_id}.csv'
     issues_stream = issues_path.open('x', encoding='utf-8-sig', newline='')
     issues_writer = csv.writer(issues_stream)
     issues_writer.writerow(['postgres_table', 'oracle_table', 'status', 'primary_key', 'column', 'postgres_value', 'oracle_value', 'reason'])

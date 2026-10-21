@@ -68,7 +68,7 @@ reuse and concurrency preserve the existing value comparison rules; snapshots
 are per table, not coordinated across both databases or the whole schema.
 # Schema issue reports
 
-Each schema run writes `reports/schema_issues_<execution_id>.csv` with all value
+Each schema run writes `reports/schema_issues_<database_name>_<execution_id>.csv` with all value
 mismatches, missing rows, missing tables, and table validation/execution failures.
 Table failures do not stop the remaining tables. A failed table's comparison may
 be incomplete; its failure is included in the CSV. An empty CSV (header only)
