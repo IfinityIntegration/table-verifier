@@ -27,13 +27,13 @@ class SchemaRunnerTests(unittest.TestCase):
         client = MagicMock()
         client.__enter__.return_value = client
         client.get_columns.return_value = [Column('id', 'integer', False, 1)]
-        client.fetch_batches.side_effect = lambda *args: (batch for batch in [[(1,)]])
+        client.fetch_batches.side_effect = lambda table, *args: (batch for batch in ([[(1,)]] if table == 'a' else []))
         with tempfile.TemporaryDirectory() as directory, \
              patch('comparator.schema_comparator.PostgresClient', return_value=client), \
              patch('comparator.schema_comparator.OracleClient', return_value=client), \
              patch('comparator.schema_comparator.list_tables', side_effect=[['a','b'], ['A','B']]), \
              patch('comparator.schema_comparator.primary_key', side_effect=[['id'], ['ID'], [], []]):
-            result = compare_schema(Path(directory), {'schema':'public', 'database':'example_db'}, {'schema':'APP'}, 10, workers=1)
+            result = compare_schema(Path(directory), {'schema':'public', 'database':'example_db'}, {'schema':'APP', 'username':'REPORT_USER'}, 10, workers=1)
             self.assertEqual(result, 1)
             logs = '\n'.join(p.read_text() for p in (Path(directory)/'logs').glob('*.log'))
             self.assertIn('NOT_COMPARED', logs)
@@ -41,8 +41,10 @@ class SchemaRunnerTests(unittest.TestCase):
             self.assertIn('completed_table_totals', logs)
             reports = list((Path(directory)/'reports').glob('schema_issues_*.csv'))
             self.assertEqual(len(reports), 1)
-            self.assertTrue(reports[0].name.startswith('schema_issues_example_db_'))
+            self.assertTrue(reports[0].name.startswith('schema_issues_REPORT_USER_'))
             self.assertIn('NOT_COMPARED', reports[0].read_text(encoding='utf-8-sig'))
+            self.assertIn('MISSING_IN_ORACLE', reports[0].read_text(encoding='utf-8-sig'))
+            self.assertNotIn('DIFFERENCE ', logs)
 
 class ParallelTests(unittest.TestCase):
     def test_worker_connections_reused_and_reports_isolated(self):

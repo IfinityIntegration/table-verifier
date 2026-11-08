@@ -26,9 +26,9 @@ def compare_schema(root, pg_config, ora_config, batch_size=10000, metadata_only=
     master = ReportRun(root / 'logs')
     report_directory = root / 'reports'
     report_directory.mkdir(exist_ok=True)
-    database_name = re.sub(r'[^A-Za-z0-9_-]+', '_', str(pg_config.get('database', 'database'))).strip('_')[:100] or 'database'
-    issues_path = report_directory / f'schema_issues_{database_name}_{master.execution_id}.csv'
-    issues_stream = issues_path.open('x', encoding='utf-8-sig', newline='')
+    oracle_username = re.sub(r'[^A-Za-z0-9_-]+', '_', ora_config.get('username') or '').strip('_')[:100] or 'oracle'
+    issues_path = report_directory / f'schema_issues_{oracle_username}_{master.execution_id}.csv'
+    issues_stream = issues_path.open('x', encoding='utf-8-sig', newline='', buffering=256 * 1024)
     issues_writer = csv.writer(issues_stream)
     issues_writer.writerow(['postgres_table', 'oracle_table', 'status', 'primary_key', 'column', 'postgres_value', 'oracle_value', 'reason'])
     issues_lock = threading.Lock()
@@ -36,7 +36,6 @@ def compare_schema(root, pg_config, ora_config, batch_size=10000, metadata_only=
     def write_issue(pg_table='', ora_table='', status='', key='', column='', pg_value='', ora_value='', reason=''):
         with issues_lock:
             issues_writer.writerow([pg_table, ora_table, status, key, column, pg_value, ora_value, reason])
-            issues_stream.flush()
     logger = logging.getLogger()
     old_handlers, old_level = logger.handlers[:], logger.level
     logger.handlers = [master.handler]
@@ -86,7 +85,7 @@ def compare_schema(root, pg_config, ora_config, batch_size=10000, metadata_only=
 
         def process_table(index, pg_table, ora_table, pg, ora):
             print(f'[{index}/{len(pairs)}] {pg_table} / {ora_table}', flush=True)
-            report = ReportRun(root / 'logs')
+            report = ReportRun(root / 'logs', log_differences=False)
             # Root database logs must go only to this worker's table log.
             report.handler.addFilter(ThreadFilter(threading.get_ident()))
             logger.addHandler(report.handler)
@@ -145,6 +144,8 @@ def compare_schema(root, pg_config, ora_config, batch_size=10000, metadata_only=
                 report.handler.close()
             with result_lock:
                 results.append(outcome)
+            with issues_lock:
+                issues_stream.flush()
             logging.info('TABLE_RESULT %s', outcome)
         executor = ThreadPoolExecutor(max_workers=workers, thread_name_prefix='compare')
         try:

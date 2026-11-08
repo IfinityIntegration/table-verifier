@@ -1,5 +1,8 @@
 # PostgreSQL–Oracle Table Comparator
 
+See [Deployment guide](DEPLOYMENT.md) for prerequisites, installation,
+configuration, validation, operations and troubleshooting.
+
 Requires Python 3.11+. Install dependencies:
 
 ```powershell
@@ -22,11 +25,11 @@ case, primary keys are detected, and all columns are compared in batches.
 Missing tables, absent/different primary keys, different column sets and failed
 tables are reported explicitly. A run with these issues is marked incomplete.
 Only accessible base tables are discovered; views and synonyms are excluded.
-Schema mode ignores manual table/key/column settings; it uses only batch_size.
+Schema mode ignores manual table/key/column settings; it uses batch sizes and workers.
 
-Each table gets a timestamped log containing every missing key, each changed
-column with both values, progress and final totals. The overall log lists table
-outcomes and log paths. All output is in `logs/`; no CSV reports are generated.
+Each table gets a timestamped log containing progress and final totals. The
+combined CSV contains missing keys and changed values. The overall log lists table
+outcomes and log paths. Logs are in `logs/`; combined schema issue CSVs are in `reports/`.
 Keys must identify equivalent records in both databases. Compare stable data
 for reliable results; different tables are read at different times.
 
@@ -68,7 +71,7 @@ reuse and concurrency preserve the existing value comparison rules; snapshots
 are per table, not coordinated across both databases or the whole schema.
 # Schema issue reports
 
-Each schema run writes `reports/schema_issues_<database_name>_<execution_id>.csv` with all value
+Each schema run writes `reports/schema_issues_<oracle_username>_<execution_id>.csv` with all value
 mismatches, missing rows, missing tables, and table validation/execution failures.
 Table failures do not stop the remaining tables. A failed table's comparison may
 be incomplete; its failure is included in the CSV. An empty CSV (header only)

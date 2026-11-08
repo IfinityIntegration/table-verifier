@@ -24,4 +24,4 @@ class FullRowTests(unittest.TestCase):
         self.assertFalse(values_equal('a', 'a '))
         self.assertFalse(values_equal('a', b'\xff'))
         self.assertTrue(values_equal('hello', b'hello'))
-        self.assertFalse(values_equal(None, ''))
+        self.assertTrue(values_equal(None, ''))

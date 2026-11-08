@@ -12,8 +12,9 @@ from comparator.table_comparator import compare_streams
 
 
 class ReportRun:
-    def __init__(self, output='logs', csv_output=None):
+    def __init__(self, output='logs', csv_output=None, *, log_differences=True):
         self.started = perf_counter()
+        self.log_differences = log_differences
         self.start_time = datetime.now(timezone.utc)
         self.execution_id = self.start_time.strftime('%Y_%m_%d_%H%M%S') + '_' + uuid4().hex[:12]
         directory = Path(output)
@@ -61,7 +62,7 @@ class ReportRun:
                  'MISSING_IN_POSTGRES': 'missing_in_postgres', 'MISSING_IN_ORACLE': 'missing_in_oracle'}[status]
         setattr(self.stats, field, getattr(self.stats, field) + 1)
         if status != 'MATCHED':
-            if self.csv_stream is None:
+            if self.csv_stream is None and self.log_differences:
                 self.logger.info('DIFFERENCE %s', self.cell(event))
             if self.csv_stream is not None:
                 key = self.cell(event['primary_key'])
